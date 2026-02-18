@@ -43,7 +43,7 @@ jobs:
         run: mvn -B package --file pom.xml
 
       - name: Run Tests
-        run: mvn test -DDEV_DB_USERNAME=admin -DDEV_DB_PASSWORD=password -DJWT_SECRET=test-secret-key-for-ci
+        run: mvn test -Dspring.profiles.active=test
 
       - name: Upload Test Results
         if: always()
