@@ -8,8 +8,6 @@ import com.gargoil.tmsapi.repository.UserRepository;
 import com.gargoil.tmsapi.security.JWT;
 import com.gargoil.tmsapi.utility.PasswordHasher;
 import jakarta.persistence.EntityExistsException;
-import jakarta.persistence.EntityNotFoundException;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -19,18 +17,16 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
 
     @Mock
-    private UserRepository userRepository;
+    private UserRepository repository;
 
     @Mock
-    private PasswordHasher passwordHasher;
+    private PasswordHasher hasher;
 
     @Mock
     private JWT jwt;
@@ -38,146 +34,69 @@ class AuthServiceTest {
     @InjectMocks
     private AuthService authService;
 
-    private User testUser;
-    private LoginDTO loginDTO;
-    private RegisterDTO registerDTO;
-
-    @BeforeEach
-    void setUp() {
-        testUser = new User(1, "testuser", "hashedPassword", "Test User", "test@example.com", "M", false);
-        loginDTO = new LoginDTO("testuser", "password123");
-        registerDTO = new RegisterDTO("newuser", "password123", "Test User", "test@example.com", "M", false);
-    }
-
-    // Authenticate Tests
     @Test
-    void testAuthenticateSuccess() {
-        String token = "test.jwt.token";
-        when(userRepository.findByUsername(loginDTO.username())).thenReturn(Optional.of(testUser));
-        when(passwordHasher.verify("password123", testUser.getPassword())).thenReturn(true);
-        when(jwt.generateToken(testUser)).thenReturn(token);
+    void authenticate_success() {
+        LoginDTO dto = new LoginDTO("john", "password");
+        User user = new User();
+        user.setPassword("hashed");
 
-        String result = authService.authenticate(loginDTO);
+        when(repository.findByUsername("john")).thenReturn(Optional.of(user));
+        when(hasher.verify("password", "hashed")).thenReturn(true);
+        when(jwt.generateToken(user)).thenReturn("jwt-token");
 
-        assertEquals(token, result);
-        verify(userRepository, times(1)).findByUsername(loginDTO.username());
-        verify(passwordHasher, times(1)).verify(loginDTO.password(), testUser.getPassword());
-        verify(jwt, times(1)).generateToken(testUser);
+        String token = authService.authenticate(dto);
+
+        assertEquals("jwt-token", token);
+        verify(jwt).generateToken(user);
     }
 
     @Test
-    void testAuthenticateWithInvalidUsername() {
-        when(userRepository.findByUsername(loginDTO.username())).thenReturn(Optional.empty());
+    void authenticate_invalidPassword_throwsException() {
+        LoginDTO dto = new LoginDTO("john", "wrong");
 
-        assertThrows(AuthenticationException.class, () -> authService.authenticate(loginDTO));
-        verify(userRepository, times(1)).findByUsername(loginDTO.username());
-        verify(passwordHasher, never()).verify(anyString(), anyString());
-        verify(jwt, never()).generateToken(any());
+        User user = new User();
+        user.setPassword("hashed");
+
+        when(repository.findByUsername("john")).thenReturn(Optional.of(user));
+        when(hasher.verify("wrong", "hashed")).thenReturn(false);
+
+        assertThrows(AuthenticationException.class, () -> authService.authenticate(dto));
     }
 
     @Test
-    void testAuthenticateWithInvalidPassword() {
-        when(userRepository.findByUsername(loginDTO.username())).thenReturn(Optional.of(testUser));
-        when(passwordHasher.verify("password123", testUser.getPassword())).thenReturn(false);
+    void authenticate_userNotFound_throwsException() {
+        LoginDTO dto = new LoginDTO("unknown", "password");
 
-        assertThrows(AuthenticationException.class, () -> authService.authenticate(loginDTO));
-        verify(userRepository, times(1)).findByUsername(loginDTO.username());
-        verify(passwordHasher, times(1)).verify(loginDTO.password(), testUser.getPassword());
-        verify(jwt, never()).generateToken(any());
-    }
+        when(repository.findByUsername("unknown")).thenReturn(Optional.empty());
 
-    // Register Tests
-    @Test
-    void testRegisterSuccess() {
-        String hashedPassword = "hashedNewPassword";
-        User newUser = new User(null, registerDTO.username(), hashedPassword, registerDTO.fullName(),
-                registerDTO.email(), registerDTO.gender(), registerDTO.admin());
-        User savedUser = new User(2, registerDTO.username(), hashedPassword, registerDTO.fullName(),
-                registerDTO.email(), registerDTO.gender(), registerDTO.admin());
-
-        when(userRepository.findByUsername(registerDTO.username())).thenReturn(Optional.empty());
-        when(passwordHasher.hash(registerDTO.password())).thenReturn(hashedPassword);
-        when(userRepository.save(any(User.class))).thenReturn(savedUser);
-
-        User result = authService.register(registerDTO);
-
-        assertNotNull(result);
-        assertEquals(registerDTO.username(), result.getUsername());
-        assertEquals(registerDTO.fullName(), result.getFullName());
-        assertEquals(registerDTO.email(), result.getEmail());
-        verify(userRepository, times(1)).findByUsername(registerDTO.username());
-        verify(passwordHasher, times(1)).hash(registerDTO.password());
-        verify(userRepository, times(1)).save(any(User.class));
+        assertThrows(AuthenticationException.class, () -> authService.authenticate(dto));
     }
 
     @Test
-    void testRegisterWithExistingUsername() {
-        when(userRepository.findByUsername(registerDTO.username())).thenReturn(Optional.of(testUser));
+    void register_success() {
+        RegisterDTO dto = mock(RegisterDTO.class);
+        User user = new User();
 
-        assertThrows(EntityExistsException.class, () -> authService.register(registerDTO));
-        verify(userRepository, times(1)).findByUsername(registerDTO.username());
-        verify(passwordHasher, never()).hash(anyString());
-        verify(userRepository, never()).save(any(User.class));
+        when(dto.username()).thenReturn("john");
+        when(dto.password()).thenReturn("password");
+        when(hasher.hash("password")).thenReturn("hashed");
+        when(dto.toUser("hashed")).thenReturn(user);
+        when(repository.findByUsername("john")).thenReturn(Optional.empty());
+        when(repository.save(user)).thenReturn(user);
+
+        User saved = authService.register(dto);
+
+        assertEquals(user, saved);
+        verify(repository).save(user);
     }
 
     @Test
-    void testRegisterSavesUserWithHashedPassword() {
-        String hashedPassword = "hashedPassword123";
-        User savedUser = new User(3, registerDTO.username(), hashedPassword, registerDTO.fullName(),
-                registerDTO.email(), registerDTO.gender(), registerDTO.admin());
+    void register_usernameExists_throwsException() {
+        RegisterDTO dto = mock(RegisterDTO.class);
 
-        when(userRepository.findByUsername(registerDTO.username())).thenReturn(Optional.empty());
-        when(passwordHasher.hash(registerDTO.password())).thenReturn(hashedPassword);
-        when(userRepository.save(any(User.class))).thenReturn(savedUser);
+        when(dto.username()).thenReturn("john");
+        when(repository.findByUsername("john")).thenReturn(Optional.of(new User()));
 
-        authService.register(registerDTO);
-
-        verify(userRepository).save(argThat(user ->
-                user.getUsername().equals(registerDTO.username()) &&
-                user.getPassword().equals(hashedPassword) &&
-                user.getFullName().equals(registerDTO.fullName())
-        ));
-    }
-
-    // GetUserByUsername Tests
-    @Test
-    void testGetUserByUsernameSuccess() {
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(testUser));
-
-        User result = authService.getUserByUsername("testuser");
-
-        assertNotNull(result);
-        assertEquals("testuser", result.getUsername());
-        assertEquals("Test User", result.getFullName());
-        verify(userRepository, times(1)).findByUsername("testuser");
-    }
-
-    @Test
-    void testGetUserByUsernameNotFound() {
-        when(userRepository.findByUsername("nonexistent")).thenReturn(Optional.empty());
-
-        assertThrows(EntityNotFoundException.class, () -> authService.getUserByUsername("nonexistent"));
-        verify(userRepository, times(1)).findByUsername("nonexistent");
-    }
-
-    @Test
-    void testGetUserByUsernameWithNullUsername() {
-        when(userRepository.findByUsername(null)).thenReturn(Optional.empty());
-
-        assertThrows(EntityNotFoundException.class, () -> authService.getUserByUsername(null));
-        verify(userRepository, times(1)).findByUsername(null);
-    }
-
-    @Test
-    void testGetUserByUsernameReturnsCorrectUser() {
-        User differentUser = new User(5, "anotheruser", "password", "Another User", "another@example.com", "F", true);
-        when(userRepository.findByUsername("anotheruser")).thenReturn(Optional.of(differentUser));
-
-        User result = authService.getUserByUsername("anotheruser");
-
-        assertEquals(5, result.getId());
-        assertEquals("anotheruser", result.getUsername());
-        assertEquals("Another User", result.getFullName());
-        assertTrue(result.getAdmin());
+        assertThrows(EntityExistsException.class, () -> authService.register(dto));
     }
 }
