@@ -31,4 +31,7 @@ public class AuthService {
     public User getUserByUsername(String username) {
         return repository.findByUsername(username).orElseThrow(() -> new EntityNotFoundException("User not found"));
     }
+    public User getUserById(Integer id) {
+        return repository.findById(id).orElseThrow(() -> new EntityNotFoundException("User not found"));
+    }
 }
