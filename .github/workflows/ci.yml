@@ -13,6 +13,21 @@ jobs:
       contents: read
       packages: write
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: tms_dev
+          POSTGRES_USER: admin
+          POSTGRES_PASSWORD: password
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -29,6 +44,10 @@ jobs:
 
       - name: Run Tests
         run: mvn test
+        env:
+          DEV_DB_USERNAME: admin
+          DEV_DB_PASSWORD: password
+          JWT_SECRET: test-secret-key-for-ci
 
       - name: Upload Test Results
         if: always()
