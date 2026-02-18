@@ -9,10 +9,9 @@ public record TaskResponseDTO(
         String description,
         @NotBlank
         String status,
-        @NotBlank
         Integer assignedTo
 ) {
     public TaskResponseDTO(Task task) {
-        this(task.getTitle(), task.getDescription(), task.getStatus(), task.getAssignedTo().getId());
+        this(task.getTitle(), task.getDescription(), task.getStatus(), (task.getAssignedTo() != null) ? task.getAssignedTo().getId() : null);
     }
 }
