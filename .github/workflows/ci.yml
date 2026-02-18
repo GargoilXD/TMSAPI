@@ -43,9 +43,7 @@ jobs:
         run: mvn -B package --file pom.xml
 
       - name: Run Tests
-        env:
-          SPRING_PROFILES_ACTIVE: test
-        run: mvn test
+        run: mvn -B test
 
       - name: Upload Test Results
         if: always()
